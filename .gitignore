@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.venv_windows/
+
+# Build outputs
+build/
+dist/
+*.dmg
+*.zip
+*.exe
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Output
+assets/output/*.png
