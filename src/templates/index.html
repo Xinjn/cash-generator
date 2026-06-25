@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>现金券生成器</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #f5f6f8;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+            padding: 28px;
+        }
+        h1 {
+            margin: 0 0 24px;
+            font-size: 24px;
+            color: #1a1a1a;
+        }
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        label {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+        input, select {
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            background: #fff;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #ff475a;
+        }
+        .pdv-fields {
+            display: none;
+        }
+        .pdv-fields.active {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .actions {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        button:hover { opacity: 0.9; }
+        .btn-primary {
+            background: #ff475a;
+            color: #fff;
+        }
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+        .preview {
+            border: 1px dashed #ddd;
+            border-radius: 8px;
+            min-height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #fafafa;
+            position: relative;
+        }
+        .preview img {
+            max-width: 100%;
+            max-height: 500px;
+            border-radius: 4px;
+        }
+        .preview .placeholder {
+            color: #999;
+            font-size: 14px;
+        }
+        .loading {
+            display: none;
+            color: #666;
+        }
+        .error {
+            color: #ff475a;
+            margin-top: 12px;
+            font-size: 14px;
+        }
+        .hint {
+            margin-top: 16px;
+            font-size: 12px;
+            color: #999;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>现金券生成器</h1>
+
+        <div class="form-grid">
+            <div class="form-group">
+                <label for="country">国家/地区</label>
+                <select id="country">
+                    {% for c in countries %}
+                    <option value="{{ c }}">{{ c }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="amount">金额</label>
+                <input type="number" id="amount" value="15" min="0" step="0.01">
+            </div>
+
+            <div class="form-group">
+                <label for="template_type">模板类型</label>
+                <select id="template_type">
+                    {% for t in templates %}
+                    <option value="{{ t.value }}">{{ t.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="width">宽度 (px)</label>
+                <input type="number" id="width" value="{{ default_width }}" min="50">
+            </div>
+
+            <div class="form-group">
+                <label for="height">高度 (px)</label>
+                <input type="number" id="height" value="{{ default_height }}" min="50">
+            </div>
+
+            <div class="form-group">
+                <label for="padding">留白 (px)</label>
+                <input type="number" id="padding" value="0" min="0">
+            </div>
+        </div>
+
+        <div id="pdvFields" class="pdv-fields">
+            <div class="form-group">
+                <label for="threshold">消费门槛 (Min.spend)</label>
+                <input type="number" id="threshold" value="0" min="0" step="0.01">
+            </div>
+            <div class="form-group">
+                <label for="cap">上限金额 (Cap)</label>
+                <input type="number" id="cap" value="0" min="0" step="0.01">
+            </div>
+        </div>
+
+        <div class="actions">
+            <button class="btn-primary" onclick="generate()">生成图片</button>
+            <button class="btn-secondary" onclick="downloadImage()">下载图片</button>
+        </div>
+
+        <div class="preview">
+            <span class="placeholder">点击"生成图片"预览结果</span>
+            <img id="resultImage" style="display: none;">
+            <div class="loading" id="loading">生成中...</div>
+        </div>
+
+        <div class="error" id="error"></div>
+
+        <div class="hint">
+            提示：本服务运行在本地，地址为 http://localhost:8080。<br>
+            同一 WiFi 下的其他设备可访问本机局域网 IP（如 http://192.168.x.x:8080）。
+        </div>
+    </div>
+
+    <script>
+        const templateSelect = document.getElementById('template_type');
+        const pdvFields = document.getElementById('pdvFields');
+
+        function togglePdvFields() {
+            if (templateSelect.value === 'pdv') {
+                pdvFields.classList.add('active');
+            } else {
+                pdvFields.classList.remove('active');
+            }
+        }
+
+        templateSelect.addEventListener('change', togglePdvFields);
+        togglePdvFields();
+
+        let currentImageData = null;
+        let currentFilename = 'coupon.png';
+
+        async function generate() {
+            const errorEl = document.getElementById('error');
+            const imgEl = document.getElementById('resultImage');
+            const placeholder = document.querySelector('.placeholder');
+            const loading = document.getElementById('loading');
+
+            errorEl.textContent = '';
+            placeholder.style.display = 'none';
+            imgEl.style.display = 'none';
+            loading.style.display = 'block';
+
+            const payload = {
+                country: document.getElementById('country').value,
+                amount: parseFloat(document.getElementById('amount').value),
+                width: parseInt(document.getElementById('width').value),
+                height: parseInt(document.getElementById('height').value),
+                padding: parseInt(document.getElementById('padding').value),
+                template_type: templateSelect.value,
+                threshold: parseFloat(document.getElementById('threshold').value) || 0,
+                cap: parseFloat(document.getElementById('cap').value) || 0,
+            };
+
+            try {
+                const res = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const data = await res.json();
+
+                loading.style.display = 'none';
+
+                if (data.success) {
+                    currentImageData = data.image;
+                    currentFilename = data.filename;
+                    imgEl.src = data.image;
+                    imgEl.style.display = 'block';
+                } else {
+                    errorEl.textContent = data.error || '生成失败';
+                    placeholder.style.display = 'block';
+                }
+            } catch (e) {
+                loading.style.display = 'none';
+                errorEl.textContent = '请求失败: ' + e.message;
+                placeholder.style.display = 'block';
+            }
+        }
+
+        function downloadImage() {
+            if (!currentImageData) {
+                alert('请先生成图片');
+                return;
+            }
+            const link = document.createElement('a');
+            link.href = currentImageData;
+            link.download = currentFilename;
+            link.click();
+        }
+    </script>
+</body>
+</html>
